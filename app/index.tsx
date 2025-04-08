@@ -20,6 +20,7 @@ import { CLIENT_ID, REDIRECT_URI, ENDPOINTS, SCOPES } from "../constants/oauth";
 import { generateRandomString, generateCodeChallenge } from "../utils/pkce";
 import * as WebBrowser from "expo-web-browser";
 import * as SecureStore from "expo-secure-store";
+import YachtDetailsModal from "./components/YachtDetailsModal";
 
 interface Yacht {
   id: string;
@@ -41,8 +42,7 @@ export default function Index() {
   const [page, setPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  console.log("test javier accessToken", accessToken);
+  const [selectedYacht, setSelectedYacht] = useState<Yacht | null>(null);
 
   const searchYachtsWithApi = useCallback(
     async (query: string, pageNum: number = 0) => {
@@ -57,15 +57,19 @@ export default function Index() {
 
         const response = await searchYachts(query, accessToken, pageNum);
 
-        const yachts = response.hits.hits.map((hit) => ({
-          id: hit._source.id,
-          name: hit._source.name,
-          length: hit._source.length,
-          builder: hit._source.builder,
-          year: hit._source.build_year,
-          image: hit._source.images[0]?.url || "https://placehold.co/600x400",
-          previousNames: hit._source.previous_names,
-        }));
+        // Filter out invalid items and map to yacht objects
+        const yachts = response.hits.hits
+          .filter((hit) => hit._source && hit._source.name) // Only include items with required fields
+          .map((hit) => ({
+            id: hit._source.id || "",
+            name: hit._source.name || "",
+            length: hit._source.length || 0,
+            builder: hit._source.builder || "",
+            year: hit._source.build_year || 0,
+            image:
+              hit._source.images?.[0]?.url || "https://placehold.co/600x400",
+            previousNames: hit._source.previous_names || [],
+          }));
 
         if (pageNum === 0) {
           setSearchResults(yachts);
@@ -76,6 +80,7 @@ export default function Index() {
         setHasMore(response.hits.total.value > (pageNum + 1) * 25);
       } catch (err) {
         setError(err instanceof Error ? err.message : "An error occurred");
+        setSearchResults([]);
       } finally {
         setIsLoading(false);
       }
@@ -114,7 +119,10 @@ export default function Index() {
 
   const renderYachtItem = useCallback(
     ({ item }: { item: Yacht }) => (
-      <TouchableOpacity style={styles.yachtCard}>
+      <TouchableOpacity
+        style={styles.yachtCard}
+        onPress={() => setSelectedYacht(item)}
+      >
         <Image source={{ uri: item.image }} style={styles.yachtImage} />
         <View style={styles.yachtInfo}>
           <Text style={styles.yachtName}>{item.name}</Text>
@@ -142,14 +150,6 @@ export default function Index() {
   }, [isLoading]);
 
   const handleLogin = async () => {
-    console.log(
-      "handleLogin",
-      CLIENT_ID,
-      REDIRECT_URI,
-      ENDPOINTS.authorizationEndpoint,
-      ENDPOINTS.tokenEndpoint,
-      SCOPES
-    );
     try {
       setIsLoading(true);
 
@@ -322,6 +322,33 @@ export default function Index() {
             </Text>
           ) : null
         }
+      />
+
+      <YachtDetailsModal
+        visible={!!selectedYacht}
+        onClose={() => setSelectedYacht(null)}
+        yacht={
+          selectedYacht
+            ? {
+                id: selectedYacht.id,
+                name: selectedYacht.name,
+                previousNames: selectedYacht.previousNames,
+                buildYear: selectedYacht.year,
+                length: selectedYacht.length,
+                builder: selectedYacht.builder,
+                image: selectedYacht.image,
+              }
+            : {
+                id: "",
+                name: "",
+                previousNames: [],
+                buildYear: 0,
+                length: 0,
+                builder: "",
+                image: "",
+              }
+        }
+        accessToken={accessToken}
       />
     </View>
   );
